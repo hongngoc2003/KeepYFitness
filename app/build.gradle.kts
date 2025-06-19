@@ -36,7 +36,7 @@ android {
 }
 
 dependencies {
-
+    implementation ("com.google.mlkit:pose-detection:18.0.0-beta5")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
