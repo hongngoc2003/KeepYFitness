@@ -185,6 +185,7 @@ class CameraConnectionFragment @SuppressLint("ValidFragment") private constructo
             texture: SurfaceTexture, width: Int, height: Int
         ) {
             configureTransform(width, height)
+            cameraConnectionCallback.onTextureViewChosen(width, height)
         }
 
         override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
@@ -503,6 +504,7 @@ class CameraConnectionFragment @SuppressLint("ValidFragment") private constructo
      */
     interface ConnectionCallback {
         fun onPreviewSizeChosen(size: Size?, cameraRotation: Int)
+        fun onTextureViewChosen(width: Int, height: Int)
     }
 
     /** Compares two `Size`s based on their areas.  */

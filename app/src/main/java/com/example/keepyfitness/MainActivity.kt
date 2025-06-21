@@ -82,7 +82,14 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
                 override fun onPreviewSizeChosen(size: Size?, rotation: Int) {
                     previewHeight = size!!.height
                     previewWidth = size.width
+                    poseOverlay.imageWidth = previewWidth
+                    poseOverlay.imageHeight = previewHeight
                     sensorOrientation = rotation - getScreenOrientation()
+                }
+
+                override fun onTextureViewChosen(width: Int, height: Int) {
+                    poseOverlay.videoWidth = width
+                    poseOverlay.videoHeight = height
                 }
             },
             this,
