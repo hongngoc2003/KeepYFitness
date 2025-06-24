@@ -18,7 +18,9 @@ import androidx.fragment.app.Fragment
 import android.graphics.Bitmap
 import android.media.Image
 import android.util.Log
+import android.widget.TextView
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
@@ -30,6 +32,8 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         .build()
     val poseDetector = PoseDetection.getClient(options)
     private lateinit var poseOverlay: PoseOverlay
+    private lateinit var countTV: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -41,7 +45,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         }
 
         poseOverlay = findViewById(R.id.po)
-
+        countTV = findViewById<TextView>(R.id.textView)
         //TODO ask for permission of camera upon first launch of application
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED
@@ -85,6 +89,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
                     poseOverlay.imageWidth = previewWidth
                     poseOverlay.imageHeight = previewHeight
                     sensorOrientation = rotation - getScreenOrientation()
+                    poseOverlay.sensorOrientation = sensorOrientation
                 }
 
                 override fun onTextureViewChosen(width: Int, height: Int) {
@@ -188,6 +193,11 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
                 // ...
                 Log.d("tryPose", results.getPoseLandmark(PoseLandmark.LEFT_KNEE)?.position?.x.toString())
                 poseOverlay.setPose(results)
+                detectPushUp(results)
+                runOnUiThread {
+                    countTV.setText(pushUpCount.toString())
+                }
+
             }
             .addOnFailureListener { e ->
                 // Task failed with an exception
@@ -210,6 +220,107 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
             }
             buffer[yuvBytes[i]]
         }
+    }
+
+    var pushUpCount = 0
+    var isLowered = false
+    fun detectPushUp(pose: Pose) {
+        val leftShoulder = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
+        val rightShoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
+        val leftElbow = pose.getPoseLandmark(PoseLandmark.LEFT_ELBOW)
+        val rightElbow = pose.getPoseLandmark(PoseLandmark.RIGHT_ELBOW)
+        val leftWrist = pose.getPoseLandmark(PoseLandmark.LEFT_WRIST)
+        val rightWrist = pose.getPoseLandmark(PoseLandmark.RIGHT_WRIST)
+        val leftHip = pose.getPoseLandmark(PoseLandmark.LEFT_HIP)
+        val rightHip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
+        val leftKnee = pose.getPoseLandmark(PoseLandmark.LEFT_KNEE)
+        val rightKnee = pose.getPoseLandmark(PoseLandmark.RIGHT_KNEE)
+
+        if (leftShoulder == null || rightShoulder == null ||
+            leftElbow == null || rightElbow == null ||
+            leftWrist == null || rightWrist == null ||
+            leftHip == null || rightHip == null) {
+            //Log.d("PushUpDetector", "Missing landmarks, skipping frame")
+            return
+        }
+
+        val leftElbowAngle = calculateAngle(leftShoulder, leftElbow, leftWrist)
+        val rightElbowAngle = calculateAngle(rightShoulder, rightElbow, rightWrist)
+        val avgElbowAngle = (leftElbowAngle + rightElbowAngle) / 2.0
+
+        val knee = leftKnee ?: rightKnee ?: return
+        val torsoAngle = calculateAngle(leftShoulder, leftHip, knee)
+
+        val inPlankPosition = torsoAngle > 160 && torsoAngle < 180
+
+        // 🔍 Logging angles and states
+        Log.d("PushUpDetector", "LeftElbow: $leftElbowAngle, RightElbow: $rightElbowAngle, Avg: $avgElbowAngle")
+        //Log.d("PushUpDetector", "TorsoAngle: $torsoAngle, InPlank: $inPlankPosition")
+        //Log.d("PushUpDetector", "IsLowered: $isLowered, PushUpCount: $pushUpCount")
+
+        if (avgElbowAngle < 90 && inPlankPosition) {
+            isLowered = true
+            //Log.d("PushUpDetector", "Detected lowering phase")
+        } else if (avgElbowAngle > 160 && isLowered && inPlankPosition) {
+            pushUpCount++
+            isLowered = false
+            //Log.d("PushUpDetector", "Push-up counted! Total: $pushUpCount")
+        }
+    }
+
+    var squatCount = 0
+    var isSquatting = false
+    fun detectSquat(pose: Pose) {
+        val leftHip = pose.getPoseLandmark(PoseLandmark.LEFT_HIP)
+        val rightHip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
+        val leftKnee = pose.getPoseLandmark(PoseLandmark.LEFT_KNEE)
+        val rightKnee = pose.getPoseLandmark(PoseLandmark.RIGHT_KNEE)
+        val leftAnkle = pose.getPoseLandmark(PoseLandmark.LEFT_ANKLE)
+        val rightAnkle = pose.getPoseLandmark(PoseLandmark.RIGHT_ANKLE)
+        val leftShoulder = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
+        val rightShoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
+
+        if (leftHip == null || rightHip == null ||
+            leftKnee == null || rightKnee == null ||
+            leftAnkle == null || rightAnkle == null ||
+            leftShoulder == null || rightShoulder == null) {
+            return
+        }
+
+        val leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle)
+        val rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle)
+        val avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2.0
+
+        val leftTorsoAngle = calculateAngle(leftShoulder, leftHip, leftKnee)
+        val rightTorsoAngle = calculateAngle(rightShoulder, rightHip, rightKnee)
+        val avgTorsoAngle = (leftTorsoAngle + rightTorsoAngle) / 2.0
+
+        // Logging for debugging
+        Log.d("SquatDetector", "LeftKnee: $leftKneeAngle, RightKnee: $rightKneeAngle, Avg: $avgKneeAngle")
+        Log.d("SquatDetector", "LeftTorso: $leftTorsoAngle, RightTorso: $rightTorsoAngle, Avg: $avgTorsoAngle")
+        Log.d("SquatDetector", "isSquatting: $isSquatting, SquatCount: $squatCount")
+
+        // Detect squat: knee angle < 100 and torso not too bent
+        if (avgKneeAngle < 100 && avgTorsoAngle > 60) {
+            isSquatting = true
+        } else if (avgKneeAngle > 160 && isSquatting) {
+            squatCount++
+            isSquatting = false
+        }
+    }
+
+    // Helper: Calculate angle between three points
+    fun calculateAngle(first: PoseLandmark, mid: PoseLandmark, last: PoseLandmark): Double {
+        val a = distance(mid, last)
+        val b = distance(first, mid)
+        val c = distance(first, last)
+
+        return Math.acos((b * b + a * a - c * c) / (2 * b * a)) * (180 / Math.PI)
+    }
+    fun distance(p1: PoseLandmark, p2: PoseLandmark): Double {
+        val dx = p1.position.x - p2.position.x
+        val dy = p1.position.y - p2.position.y
+        return Math.sqrt((dx * dx + dy * dy).toDouble())
     }
 
 }

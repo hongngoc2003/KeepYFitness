@@ -19,6 +19,8 @@ class PoseOverlay(context:Context?, attr: AttributeSet?): View(context, attr) {
     var videoWidth: Int = width
     var videoHeight: Int = height
 
+    var sensorOrientation: Int = 0
+
     private var pose: Pose? = null
 
     var paint = Paint().apply {
@@ -46,6 +48,15 @@ class PoseOverlay(context:Context?, attr: AttributeSet?): View(context, attr) {
     }
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+
+        if(sensorOrientation == 90 || sensorOrientation == 270) {
+            // Landscape mode
+            scaleX = videoWidth/imageHeight.toFloat()
+            scaleY = videoHeight/imageWidth.toFloat()
+        } else {
+            scaleX = videoHeight/imageHeight.toFloat()
+            scaleY = videoWidth/imageWidth.toFloat()
+        }
 
         scaleX = videoWidth/imageHeight.toFloat()
         scaleY = videoHeight/imageWidth.toFloat()
