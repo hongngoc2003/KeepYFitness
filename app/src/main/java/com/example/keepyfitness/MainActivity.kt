@@ -18,7 +18,11 @@ import androidx.fragment.app.Fragment
 import android.graphics.Bitmap
 import android.media.Image
 import android.util.Log
+import android.widget.ImageView
 import android.widget.TextView
+import androidx.cardview.widget.CardView
+import com.bumptech.glide.Glide
+import com.example.keepyfitness.Model.ExerciseDataModel
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
@@ -33,6 +37,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
     val poseDetector = PoseDetection.getClient(options)
     private lateinit var poseOverlay: PoseOverlay
     private lateinit var countTV: TextView
+    private lateinit var exerciseDataModel: ExerciseDataModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,8 +49,20 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
             insets
         }
 
+        exerciseDataModel = intent.getSerializableExtra("data") as ExerciseDataModel
+
         poseOverlay = findViewById(R.id.po)
         countTV = findViewById<TextView>(R.id.textView)
+        var countCard = findViewById<CardView>(R.id.countCard)
+        countCard.setBackgroundColor(exerciseDataModel.color)
+
+        var topCard = findViewById<CardView>(R.id.card2)
+        topCard.setBackgroundColor(exerciseDataModel.color)
+
+        var topImg = findViewById<ImageView>(R.id.imageView2)
+        Glide.with(applicationContext).asGif().load(exerciseDataModel.image).into(topImg)
+
+
         //TODO ask for permission of camera upon first launch of application
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED
@@ -193,9 +210,27 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
                 // ...
                 Log.d("tryPose", results.getPoseLandmark(PoseLandmark.LEFT_KNEE)?.position?.x.toString())
                 poseOverlay.setPose(results)
-                detectPushUp(results)
-                runOnUiThread {
-                    countTV.setText(pushUpCount.toString())
+
+                if(exerciseDataModel.id == 1) {
+                    detectPushUp(results)
+                    runOnUiThread {
+                        countTV.setText(pushUpCount.toString())
+                    }
+                } else if (exerciseDataModel.id == 2) {
+                    detectSquat(results)
+                    runOnUiThread {
+                        countTV.setText(squatCount.toString())
+                    }
+                } else if (exerciseDataModel.id == 3) {
+                    detectJumpingJack(results)
+                    runOnUiThread {
+                        countTV.setText(jumpingJackCount.toString())
+                    }
+                } else if (exerciseDataModel.id == 4) {
+                    detectPlankToDownwardDog(results)
+                    runOnUiThread {
+                        countTV.setText(plankDogCount.toString())
+                    }
                 }
 
             }
@@ -306,6 +341,92 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         } else if (avgKneeAngle > 160 && isSquatting) {
             squatCount++
             isSquatting = false
+        }
+    }
+
+    var jumpingJackCount = 0
+    var isHandsUpAndLegsApart = false
+    fun detectJumpingJack(pose: Pose) {
+        val leftWrist = pose.getPoseLandmark(PoseLandmark.LEFT_WRIST)
+        val rightWrist = pose.getPoseLandmark(PoseLandmark.RIGHT_WRIST)
+        val leftAnkle = pose.getPoseLandmark(PoseLandmark.LEFT_ANKLE)
+        val rightAnkle = pose.getPoseLandmark(PoseLandmark.RIGHT_ANKLE)
+        val leftHip = pose.getPoseLandmark(PoseLandmark.LEFT_HIP)
+        val rightHip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
+        val leftShoulder = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
+        val rightShoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
+
+        if (leftWrist == null || rightWrist == null ||
+            leftAnkle == null || rightAnkle == null ||
+            leftHip == null || rightHip == null ||
+            leftShoulder == null || rightShoulder == null) {
+            return
+        }
+
+        // Hands above shoulders? (Smaller y means higher on screen)
+        val avgShoulderY = (leftShoulder.position.y + rightShoulder.position.y) / 2
+        val avgWristY = (leftWrist.position.y + rightWrist.position.y) / 2
+        val handsAboveShoulders = avgWristY < avgShoulderY - 30
+
+        // Legs apart? (Distance between ankles significantly wider than hips)
+        val hipWidth = distance(leftHip, rightHip)
+        val ankleDistance = distance(leftAnkle, rightAnkle)
+        val legsApart = ankleDistance > hipWidth * 1.5
+
+        // Logging for debugging
+        Log.d("JumpingJackDetector", "handsAbove: $handsAboveShoulders, legsApart: $legsApart")
+
+        if (handsAboveShoulders && legsApart) {
+            isHandsUpAndLegsApart = true
+        } else if (!handsAboveShoulders && !legsApart && isHandsUpAndLegsApart) {
+            jumpingJackCount++
+            isHandsUpAndLegsApart = false
+            Log.d("JumpingJackDetector", "Jumping Jack Counted! Total: $jumpingJackCount")
+        }
+    }
+
+    var plankDogCount = 0
+    var isInPlank = false
+    fun detectPlankToDownwardDog(pose: Pose) {
+        val leftShoulder = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
+        val rightShoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
+        val leftHip = pose.getPoseLandmark(PoseLandmark.LEFT_HIP)
+        val rightHip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
+        val leftAnkle = pose.getPoseLandmark(PoseLandmark.LEFT_ANKLE)
+        val rightAnkle = pose.getPoseLandmark(PoseLandmark.RIGHT_ANKLE)
+
+        if (leftShoulder == null || rightShoulder == null ||
+            leftHip == null || rightHip == null ||
+            leftAnkle == null || rightAnkle == null) {
+            return
+        }
+
+        // Average positions
+        val shoulderY = (leftShoulder.position.y + rightShoulder.position.y) / 2
+        val hipY = (leftHip.position.y + rightHip.position.y) / 2
+        val ankleY = (leftAnkle.position.y + rightAnkle.position.y) / 2
+
+        // Measure vertical changes
+        val hipToShoulder = hipY - shoulderY
+        val hipToAnkle = hipY - ankleY
+
+        // Detect Plank: hips nearly aligned between shoulders and ankles (flat body)
+        val inPlankPosition = Math.abs(hipToShoulder) < 50 && Math.abs(hipToAnkle) < 50
+
+        // Detect Downward Dog: hips much higher than shoulders and ankles
+        val inDownwardDog = hipY < shoulderY - 50 && hipY < ankleY - 50
+
+        // Debug Logging
+        Log.d("PlankDogDetector", "hipY: $hipY, shoulderY: $shoulderY, ankleY: $ankleY")
+        Log.d("PlankDogDetector", "inPlank: $inPlankPosition, inDownwardDog: $inDownwardDog")
+
+        // Transition detection
+        if (inPlankPosition) {
+            isInPlank = true
+        } else if (isInPlank && inDownwardDog) {
+            plankDogCount++
+            isInPlank = false
+            Log.d("PlankDogDetector", "Plank to Downward Dog Counted! Total: $plankDogCount")
         }
     }
 

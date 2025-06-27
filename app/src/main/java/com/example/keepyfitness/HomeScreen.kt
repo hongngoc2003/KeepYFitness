@@ -1,18 +1,22 @@
 package com.example.keepyfitness
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
+import android.widget.ImageView
 import android.widget.ListView
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.bumptech.glide.Glide
 import com.example.keepyfitness.Model.ExerciseDataModel
 
 class HomeScreen : AppCompatActivity() {
@@ -63,6 +67,19 @@ class HomeScreen : AppCompatActivity() {
         ): View? {
             var view = LayoutInflater.from(context).inflate(R.layout.exercise_item, parent, false)
             var titleTV = view.findViewById<TextView>(R.id.textView2)
+            var exerciseImg = view.findViewById<ImageView>(R.id.imageView)
+            var card = view.findViewById<CardView>(R.id.cardView)
+
+            card.setOnClickListener {
+                var intent = Intent(context, MainActivity::class.java)
+                intent.putExtra("data", exerciseList[position])
+                context.startActivity(intent)
+            }
+
+            card.setCardBackgroundColor(exerciseList[position].color)
+
+            Glide.with(context).asGif().load(exerciseList[position].image).into(exerciseImg)
+
             titleTV.setText(exerciseList[position].title)
             return view
         }

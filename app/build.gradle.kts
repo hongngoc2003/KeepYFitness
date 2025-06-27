@@ -36,6 +36,7 @@ android {
 }
 
 dependencies {
+    implementation ("com.github.bumptech.glide:glide:4.16.0")
     implementation ("com.google.mlkit:pose-detection:18.0.0-beta5")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
