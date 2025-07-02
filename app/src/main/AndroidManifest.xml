@@ -18,6 +18,22 @@
         android:theme="@style/Theme.KeepYFitness"
         tools:targetApi="31">
         <activity
+            android:name=".RegisterActivity"
+            android:exported="false"
+            android:label="@string/title_activity_register"
+            android:theme="@style/Theme.KeepYFitness" />
+        <activity
+            android:name=".LoginActivity"
+            android:exported="true"
+            android:label="@string/title_activity_login"
+            android:theme="@style/Theme.KeepYFitness">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
             android:name=".HomeScreen"
             android:exported="true">
             <intent-filter>
@@ -35,6 +51,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ResetPasswordActivity"
+            android:exported="false"
+            android:label="Reset Password"
+            android:theme="@style/Theme.KeepYFitness" />
     </application>
 
 </manifest>
