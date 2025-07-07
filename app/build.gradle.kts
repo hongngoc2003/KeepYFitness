@@ -17,26 +17,66 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Tối ưu hóa performance
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a") // Chỉ build cho ARM architectures
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true // Bật minify cho release build
+            isShrinkResources = true // Loại bỏ resources không dùng
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+        debug {
+            isDebuggable = true
+            // Tắt các tối ưu hóa có thể làm chậm debug build
+        }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     kotlinOptions {
         jvmTarget = "11"
+        // Tối ưu hóa Kotlin compilation
+        freeCompilerArgs += listOf(
+            "-Xjvm-default=all",
+            "-opt-in=kotlin.RequiresOptIn"
+        )
     }
+
     buildFeatures {
         compose = true
+        // Tắt các features không cần thiết
+        buildConfig = false
+        aidl = false
+        renderScript = false
+        shaders = false
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.1"
+    }
+
+    // Tối ưu hóa packaging
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt"
+            )
+        }
     }
 }
 
@@ -45,8 +85,8 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth")
     implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
-    implementation ("com.github.bumptech.glide:glide:4.16.0")
-    implementation ("com.google.mlkit:pose-detection:18.0.0-beta5")
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+    implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
