@@ -60,6 +60,7 @@
         <activity android:name=".ExerciseListActivity" android:exported="true" />
         <activity android:name=".ScheduleListActivity" android:exported="true" />
         <activity android:name=".AddScheduleActivity" android:exported="true" />
+        <activity android:name=".WorkoutHistoryActivity" android:exported="true" />
         <receiver android:name=".WorkoutNotificationReceiver" android:exported="false" />
     </application>
 

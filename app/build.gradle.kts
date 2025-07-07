@@ -87,6 +87,8 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
     implementation("com.github.bumptech.glide:glide:4.16.0")
     implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
+    // Thêm chart library cho progress tracking
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)

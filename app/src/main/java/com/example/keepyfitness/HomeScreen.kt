@@ -62,6 +62,12 @@ class HomeScreen : AppCompatActivity() {
             startActivity(intent)
         }
 
+        // Thêm nút View History với layout đã được định nghĩa trong XML
+        val btnViewHistory = findViewById<Button>(R.id.btnViewHistory)
+        btnViewHistory.setOnClickListener {
+            val intent = Intent(this, WorkoutHistoryActivity::class.java)
+            startActivity(intent)
+        }
     }
 
 }

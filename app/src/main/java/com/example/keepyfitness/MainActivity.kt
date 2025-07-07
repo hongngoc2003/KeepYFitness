@@ -30,7 +30,7 @@ import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 
 class MainActivity : AppCompatActivity(), OnImageAvailableListener {
-    // Base pose detector with streaming frames, when depending on the pose-detection sdk
+
     val options = PoseDetectorOptions.Builder()
         .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
         .build()
@@ -38,6 +38,33 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
     private lateinit var poseOverlay: PoseOverlay
     private lateinit var countTV: TextView
     private lateinit var exerciseDataModel: ExerciseDataModel
+
+    // Workout tracking variables
+    private var workoutStartTime: Long = 0
+    private var targetCount: Int = 0
+
+    // Form Correction variables
+    private lateinit var formCorrector: FormCorrector
+    private var feedbackContainer: android.widget.LinearLayout? = null
+    private var feedbackCard: androidx.cardview.widget.CardView? = null
+    private var feedbackIcon: android.widget.ImageView? = null
+    private var feedbackTitle: android.widget.TextView? = null
+    private var feedbackMessage: android.widget.TextView? = null
+    private var formQualityProgress: android.widget.ProgressBar? = null
+    private var formQualityText: android.widget.TextView? = null
+    private var lastFeedbackTime = 0L
+    private val feedbackCooldown = 3000L
+
+    // Voice Coach
+    private lateinit var voiceCoach: VoiceCoach
+    private var lastMotivationTime = 0L
+    private val motivationInterval = 30000L
+    private var workoutAnnounced = false
+
+    // Camera variables
+    var previewHeight = 0
+    var previewWidth = 0
+    var sensorOrientation = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,10 +77,18 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         }
 
         exerciseDataModel = intent.getSerializableExtra("data") as ExerciseDataModel
+        targetCount = intent.getIntExtra("target_count", 50)
+        workoutStartTime = System.currentTimeMillis()
+
+        // Initialize components
+        formCorrector = FormCorrector()
+        voiceCoach = VoiceCoach(this)
 
         poseOverlay = findViewById(R.id.po)
         countTV = findViewById<TextView>(R.id.textView)
         var countCard = findViewById<CardView>(R.id.countCard)
+
+        setupFormFeedbackOverlay()
         countCard.setBackgroundColor(exerciseDataModel.color)
 
         var topCard = findViewById<CardView>(R.id.card2)
@@ -62,48 +97,97 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         var topImg = findViewById<ImageView>(R.id.imageView2)
         Glide.with(applicationContext).asGif().load(exerciseDataModel.image).into(topImg)
 
-
-        //TODO ask for permission of camera upon first launch of application
+        // Request camera permission
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED
-            ) {
-                val permission = arrayOf(
-                    android.Manifest.permission.CAMERA
-
-                )
+            if (checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED) {
+                val permission = arrayOf(android.Manifest.permission.CAMERA)
                 requestPermissions(permission, 1122)
             } else {
-                //TODO show live camera footage
                 setFragment()
-
             }
-        }else{
-            //TODO show live camera footage
+        } else {
             setFragment()
         }
     }
 
-    var previewHeight = 0;
-    var previewWidth = 0
-    var sensorOrientation = 0;
-    //TODO fragment which show llive footage from camera
+    private fun setupFormFeedbackOverlay() {
+        val inflater = layoutInflater
+        val feedbackOverlay = inflater.inflate(R.layout.form_feedback_overlay, null)
+
+        feedbackContainer = feedbackOverlay.findViewById(R.id.feedbackContainer)
+        feedbackCard = feedbackOverlay.findViewById(R.id.feedbackCard)
+        feedbackIcon = feedbackOverlay.findViewById(R.id.feedbackIcon)
+        feedbackTitle = feedbackOverlay.findViewById(R.id.feedbackTitle)
+        feedbackMessage = feedbackOverlay.findViewById(R.id.feedbackMessage)
+        formQualityProgress = feedbackOverlay.findViewById(R.id.formQualityProgress)
+        formQualityText = feedbackOverlay.findViewById(R.id.formQualityText)
+
+        val mainLayout = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.main)
+        val layoutParams = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams(
+            androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.MATCH_PARENT,
+            androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.WRAP_CONTENT
+        )
+        layoutParams.topToBottom = R.id.card2
+        layoutParams.startToStart = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+        layoutParams.endToEnd = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+        layoutParams.setMargins(0, 16, 0, 0)
+
+        feedbackOverlay.layoutParams = layoutParams
+        mainLayout.addView(feedbackOverlay)
+
+        feedbackOverlay.findViewById<android.widget.ImageView>(R.id.dismissFeedback).setOnClickListener {
+            hideFeedback()
+        }
+    }
+
+    private fun showFeedback(feedback: String, isPositive: Boolean, formQuality: Int) {
+        if (System.currentTimeMillis() - lastFeedbackTime < feedbackCooldown) return
+        lastFeedbackTime = System.currentTimeMillis()
+
+        feedbackContainer?.visibility = android.view.View.VISIBLE
+        feedbackCard?.setCardBackgroundColor(
+            if (isPositive) android.graphics.Color.parseColor("#4CAF50")
+            else android.graphics.Color.parseColor("#F44336")
+        )
+        feedbackIcon?.setImageResource(
+            if (isPositive) android.R.drawable.ic_dialog_info
+            else android.R.drawable.ic_dialog_alert
+        )
+        feedbackTitle?.text = if (isPositive) "Good Job!" else "Correction Needed!"
+        feedbackMessage?.text = feedback
+
+        formQualityProgress?.progress = formQuality
+        formQualityText?.text = "$formQuality%"
+
+        val progressColor = when {
+            formQuality >= 80 -> android.graphics.Color.parseColor("#4CAF50")
+            formQuality >= 60 -> android.graphics.Color.parseColor("#FF9800")
+            else -> android.graphics.Color.parseColor("#F44336")
+        }
+        formQualityProgress?.progressTintList = android.content.res.ColorStateList.valueOf(progressColor)
+
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            hideFeedback()
+        }, 4000)
+    }
+
+    private fun hideFeedback() {
+        feedbackContainer?.visibility = android.view.View.GONE
+    }
+
     protected fun setFragment() {
-        val manager =
-            getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
         var cameraId: String? = null
         try {
             cameraId = manager.cameraIdList[0]
         } catch (e: CameraAccessException) {
             e.printStackTrace()
         }
-        val fragment: Fragment
         val camera2Fragment = CameraConnectionFragment.newInstance(
-            object :
-                CameraConnectionFragment.ConnectionCallback {
+            object : CameraConnectionFragment.ConnectionCallback {
                 override fun onPreviewSizeChosen(size: Size?, rotation: Int) {
                     previewHeight = size!!.height
                     previewWidth = size.width
-                    poseOverlay.imageWidth = previewWidth
                     poseOverlay.imageHeight = previewHeight
                     sensorOrientation = rotation - getScreenOrientation()
                     poseOverlay.sensorOrientation = sensorOrientation
@@ -119,8 +203,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
             Size(640, 480)
         )
         camera2Fragment.setCamera(cameraId)
-        fragment = camera2Fragment
-        supportFragmentManager.beginTransaction().replace(R.id.container, fragment).commit()
+        supportFragmentManager.beginTransaction().replace(R.id.container, camera2Fragment).commit()
     }
 
     protected fun getScreenOrientation(): Int {
@@ -138,16 +221,14 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        //TODO show live camera footage
         if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            //TODO show live camera footage
             setFragment()
         } else {
             finish()
         }
     }
 
-    //TODO getting frames of live camera footage and passing them to model
+    // Camera frame processing - TĂNG HIỆU SUẤT
     private var isProcessingFrame = false
     private val yuvBytes = arrayOfNulls<ByteArray>(3)
     private var rgbBytes: IntArray? = null
@@ -155,11 +236,31 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
     private var postInferenceCallback: Runnable? = null
     private var imageConverter: Runnable? = null
     private var rgbFrameBitmap: Bitmap? = null
+
+    // THROTTLING VARIABLES để giảm lag
+    private var lastProcessTime = 0L
+    private val processInterval = 200L // Giảm từ real-time xuống 5 FPS
+    private var frameSkipCounter = 0
+    private val frameSkipInterval = 3 // Chỉ xử lý 1/3 frames
+
     override fun onImageAvailable(reader: ImageReader) {
-        // We need wait until we have some size from onPreviewSizeChosen
-        if (previewWidth == 0 || previewHeight == 0) {
+        if (previewWidth == 0 || previewHeight == 0) return
+
+        // SKIP FRAMES để tăng performance
+        frameSkipCounter++
+        if (frameSkipCounter % frameSkipInterval != 0) {
+            reader.acquireLatestImage()?.close()
             return
         }
+
+        // THROTTLE processing để tránh overload
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastProcessTime < processInterval) {
+            reader.acquireLatestImage()?.close()
+            return
+        }
+        lastProcessTime = currentTime
+
         if (rgbBytes == null) {
             rgbBytes = IntArray(previewWidth * previewHeight)
         }
@@ -194,60 +295,141 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
             }
             processImage()
         } catch (e: Exception) {
-            return
+            postInferenceCallback?.run()
         }
     }
+
     private fun processImage() {
         imageConverter!!.run()
         rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Bitmap.Config.ARGB_8888)
         rgbFrameBitmap?.setPixels(rgbBytes!!, 0, previewWidth, 0, 0, previewWidth, previewHeight)
 
-        var inputImage =  InputImage.fromBitmap(rgbFrameBitmap!!, sensorOrientation)
+        val inputImage = InputImage.fromBitmap(rgbFrameBitmap!!, sensorOrientation)
 
         poseDetector.process(inputImage)
             .addOnSuccessListener { results ->
-                // Task completed successfully
-                // ...
-                Log.d("tryPose", results.getPoseLandmark(PoseLandmark.LEFT_KNEE)?.position?.x.toString())
                 poseOverlay.setPose(results)
 
-                if(exerciseDataModel.id == 1) {
-                    detectPushUp(results)
-                    runOnUiThread {
-                        countTV.setText(pushUpCount.toString())
-                    }
-                } else if (exerciseDataModel.id == 2) {
-                    detectSquat(results)
-                    runOnUiThread {
-                        countTV.setText(squatCount.toString())
-                    }
-                } else if (exerciseDataModel.id == 3) {
-                    detectJumpingJack(results)
-                    runOnUiThread {
-                        countTV.setText(jumpingJackCount.toString())
-                    }
-                } else if (exerciseDataModel.id == 4) {
-                    detectPlankToDownwardDog(results)
-                    runOnUiThread {
-                        countTV.setText(plankDogCount.toString())
-                    }
+                // Announce workout start (once)
+                if (!workoutAnnounced) {
+                    voiceCoach.announceWorkoutStart(exerciseDataModel.title, targetCount)
+                    workoutAnnounced = true
                 }
 
+                // GIẢM TẦN SUẤT form analysis để tăng performance
+                if (frameSkipCounter % 6 == 0) { // Chỉ analyze form mỗi 6 frames
+                    analyzeFormAndGiveFeedback(results)
+                }
+
+                // Exercise detection và counting - GIỮ NGUYÊN tần suất cho accuracy
+                detectAndCountExercise(results)
             }
             .addOnFailureListener { e ->
-                // Task failed with an exception
-                // ...
+                Log.e("PoseDetection", "Failed to process image", e)
             }
-
 
         postInferenceCallback!!.run()
     }
-    protected fun fillBytes(
-        planes: Array<Image.Plane>,
-        yuvBytes: Array<ByteArray?>
-    ) {
-        // Because of the variable row stride it's not possible to know in
-        // advance the actual necessary dimensions of the yuv planes.
+
+    // TÁCH RIÊNG form analysis để optimize
+    private fun analyzeFormAndGiveFeedback(results: Pose) {
+        val feedbacks = formCorrector.analyzeForm(exerciseDataModel.id, results)
+        val formQuality = formCorrector.calculateFormQuality(exerciseDataModel.id, results)
+
+        runOnUiThread {
+            formQualityProgress?.progress = formQuality
+            formQualityText?.text = "$formQuality%"
+        }
+
+        // Voice feedback for form corrections - THROTTLED
+        val criticalFeedback = feedbacks.firstOrNull {
+            it.severity == com.example.keepyfitness.Model.FeedbackSeverity.CRITICAL
+        }
+        val warningFeedback = feedbacks.firstOrNull {
+            it.severity == com.example.keepyfitness.Model.FeedbackSeverity.WARNING
+        }
+        val positiveFeedback = feedbacks.firstOrNull {
+            it.severity == com.example.keepyfitness.Model.FeedbackSeverity.INFO &&
+            (it.message.contains("Perfect") || it.message.contains("Great") || it.message.contains("Tuyệt vời"))
+        }
+
+        when {
+            criticalFeedback != null -> {
+                runOnUiThread {
+                    showFeedback(criticalFeedback.message, false, formQuality)
+                    voiceCoach.giveFormFeedback(criticalFeedback.message, false)
+                }
+            }
+            warningFeedback != null -> {
+                runOnUiThread {
+                    showFeedback(warningFeedback.message, false, formQuality)
+                    voiceCoach.giveFormFeedback(warningFeedback.message, false)
+                }
+            }
+            positiveFeedback != null -> {
+                runOnUiThread {
+                    showFeedback(positiveFeedback.message, true, formQuality)
+                    voiceCoach.giveFormFeedback(positiveFeedback.message, true)
+                }
+            }
+        }
+    }
+
+    // TÁCH RIÊNG exercise detection để tối ưu
+    private fun detectAndCountExercise(results: Pose) {
+        var currentCount = 0
+        when(exerciseDataModel.id) {
+            1 -> {
+                val oldCount = pushUpCount
+                detectPushUp(results)
+                currentCount = pushUpCount
+                if (pushUpCount > oldCount) {
+                    voiceCoach.announceCount(pushUpCount, "push ups")
+                    voiceCoach.announceProgress(pushUpCount, targetCount)
+                }
+                runOnUiThread { countTV.text = pushUpCount.toString() }
+            }
+            2 -> {
+                val oldCount = squatCount
+                detectSquat(results)
+                currentCount = squatCount
+                if (squatCount > oldCount) {
+                    voiceCoach.announceCount(squatCount, "squats")
+                    voiceCoach.announceProgress(squatCount, targetCount)
+                }
+                runOnUiThread { countTV.text = squatCount.toString() }
+            }
+            3 -> {
+                val oldCount = jumpingJackCount
+                detectJumpingJack(results)
+                currentCount = jumpingJackCount
+                if (jumpingJackCount > oldCount) {
+                    voiceCoach.announceCount(jumpingJackCount, "jumping jacks")
+                    voiceCoach.announceProgress(jumpingJackCount, targetCount)
+                }
+                runOnUiThread { countTV.text = jumpingJackCount.toString() }
+            }
+            4 -> {
+                val oldCount = plankDogCount
+                detectPlankToDownwardDog(results)
+                currentCount = plankDogCount
+                if (plankDogCount > oldCount) {
+                    voiceCoach.announceCount(plankDogCount, "plank transitions")
+                    voiceCoach.announceProgress(plankDogCount, targetCount)
+                }
+                runOnUiThread { countTV.text = plankDogCount.toString() }
+            }
+        }
+
+        // Motivational messages - GIẢM TẦN SUẤT
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastMotivationTime > motivationInterval && currentCount > 0) {
+            voiceCoach.giveMotivation()
+            lastMotivationTime = currentTime
+        }
+    }
+
+    protected fun fillBytes(planes: Array<Image.Plane>, yuvBytes: Array<ByteArray?>) {
         for (i in planes.indices) {
             val buffer = planes[i].buffer
             if (yuvBytes[i] == null) {
@@ -257,6 +439,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         }
     }
 
+    // Exercise detection methods
     var pushUpCount = 0
     var isLowered = false
     fun detectPushUp(pose: Pose) {
@@ -274,10 +457,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         if (leftShoulder == null || rightShoulder == null ||
             leftElbow == null || rightElbow == null ||
             leftWrist == null || rightWrist == null ||
-            leftHip == null || rightHip == null) {
-            //Log.d("PushUpDetector", "Missing landmarks, skipping frame")
-            return
-        }
+            leftHip == null || rightHip == null) return
 
         val leftElbowAngle = calculateAngle(leftShoulder, leftElbow, leftWrist)
         val rightElbowAngle = calculateAngle(rightShoulder, rightElbow, rightWrist)
@@ -285,21 +465,13 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
 
         val knee = leftKnee ?: rightKnee ?: return
         val torsoAngle = calculateAngle(leftShoulder, leftHip, knee)
-
         val inPlankPosition = torsoAngle > 160 && torsoAngle < 180
-
-        // 🔍 Logging angles and states
-        Log.d("PushUpDetector", "LeftElbow: $leftElbowAngle, RightElbow: $rightElbowAngle, Avg: $avgElbowAngle")
-        //Log.d("PushUpDetector", "TorsoAngle: $torsoAngle, InPlank: $inPlankPosition")
-        //Log.d("PushUpDetector", "IsLowered: $isLowered, PushUpCount: $pushUpCount")
 
         if (avgElbowAngle < 90 && inPlankPosition) {
             isLowered = true
-            //Log.d("PushUpDetector", "Detected lowering phase")
         } else if (avgElbowAngle > 160 && isLowered && inPlankPosition) {
             pushUpCount++
             isLowered = false
-            //Log.d("PushUpDetector", "Push-up counted! Total: $pushUpCount")
         }
     }
 
@@ -318,25 +490,21 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         if (leftHip == null || rightHip == null ||
             leftKnee == null || rightKnee == null ||
             leftAnkle == null || rightAnkle == null ||
-            leftShoulder == null || rightShoulder == null) {
-            return
-        }
+            leftShoulder == null || rightShoulder == null) return
 
         val leftKneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle)
         val rightKneeAngle = calculateAngle(rightHip, rightKnee, rightAnkle)
         val avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2.0
 
+        val avgHipY = (leftHip.position.y + rightHip.position.y) / 2
+        val avgKneeY = (leftKnee.position.y + rightKnee.position.y) / 2
+        val hipBelowKnee = avgHipY > avgKneeY
+
         val leftTorsoAngle = calculateAngle(leftShoulder, leftHip, leftKnee)
         val rightTorsoAngle = calculateAngle(rightShoulder, rightHip, rightKnee)
         val avgTorsoAngle = (leftTorsoAngle + rightTorsoAngle) / 2.0
 
-        // Logging for debugging
-        Log.d("SquatDetector", "LeftKnee: $leftKneeAngle, RightKnee: $rightKneeAngle, Avg: $avgKneeAngle")
-        Log.d("SquatDetector", "LeftTorso: $leftTorsoAngle, RightTorso: $rightTorsoAngle, Avg: $avgTorsoAngle")
-        Log.d("SquatDetector", "isSquatting: $isSquatting, SquatCount: $squatCount")
-
-        // Detect squat: knee angle < 100 and torso not too bent
-        if (avgKneeAngle < 100 && avgTorsoAngle > 60) {
+        if (avgKneeAngle < 90 && avgTorsoAngle > 80 && hipBelowKnee) {
             isSquatting = true
         } else if (avgKneeAngle > 160 && isSquatting) {
             squatCount++
@@ -346,6 +514,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
 
     var jumpingJackCount = 0
     var isHandsUpAndLegsApart = false
+    var isInStartPosition = false
     fun detectJumpingJack(pose: Pose) {
         val leftWrist = pose.getPoseLandmark(PoseLandmark.LEFT_WRIST)
         val rightWrist = pose.getPoseLandmark(PoseLandmark.RIGHT_WRIST)
@@ -359,29 +528,28 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         if (leftWrist == null || rightWrist == null ||
             leftAnkle == null || rightAnkle == null ||
             leftHip == null || rightHip == null ||
-            leftShoulder == null || rightShoulder == null) {
-            return
-        }
+            leftShoulder == null || rightShoulder == null) return
 
-        // Hands above shoulders? (Smaller y means higher on screen)
         val avgShoulderY = (leftShoulder.position.y + rightShoulder.position.y) / 2
         val avgWristY = (leftWrist.position.y + rightWrist.position.y) / 2
         val handsAboveShoulders = avgWristY < avgShoulderY - 30
 
-        // Legs apart? (Distance between ankles significantly wider than hips)
         val hipWidth = distance(leftHip, rightHip)
         val ankleDistance = distance(leftAnkle, rightAnkle)
         val legsApart = ankleDistance > hipWidth * 1.5
 
-        // Logging for debugging
-        Log.d("JumpingJackDetector", "handsAbove: $handsAboveShoulders, legsApart: $legsApart")
+        val handsDown = avgWristY > avgShoulderY + 20
+        val legsTogether = ankleDistance <= hipWidth * 1.2
 
-        if (handsAboveShoulders && legsApart) {
+        if (handsDown && legsTogether) {
+            isInStartPosition = true
+        }
+
+        if (handsAboveShoulders && legsApart && isInStartPosition) {
             isHandsUpAndLegsApart = true
-        } else if (!handsAboveShoulders && !legsApart && isHandsUpAndLegsApart) {
+        } else if (handsDown && legsTogether && isHandsUpAndLegsApart) {
             jumpingJackCount++
             isHandsUpAndLegsApart = false
-            Log.d("JumpingJackDetector", "Jumping Jack Counted! Total: $jumpingJackCount")
         }
     }
 
@@ -394,54 +562,49 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         val rightHip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
         val leftAnkle = pose.getPoseLandmark(PoseLandmark.LEFT_ANKLE)
         val rightAnkle = pose.getPoseLandmark(PoseLandmark.RIGHT_ANKLE)
+        val leftWrist = pose.getPoseLandmark(PoseLandmark.LEFT_WRIST)
+        val rightWrist = pose.getPoseLandmark(PoseLandmark.RIGHT_WRIST)
 
         if (leftShoulder == null || rightShoulder == null ||
             leftHip == null || rightHip == null ||
-            leftAnkle == null || rightAnkle == null) {
-            return
-        }
+            leftAnkle == null || rightAnkle == null ||
+            leftWrist == null || rightWrist == null) return
 
-        // Average positions
         val shoulderY = (leftShoulder.position.y + rightShoulder.position.y) / 2
         val hipY = (leftHip.position.y + rightHip.position.y) / 2
         val ankleY = (leftAnkle.position.y + rightAnkle.position.y) / 2
+        val wristY = (leftWrist.position.y + rightWrist.position.y) / 2
 
-        // Measure vertical changes
-        val hipToShoulder = hipY - shoulderY
-        val hipToAnkle = hipY - ankleY
+        val bodyAlignment = kotlin.math.abs(shoulderY - hipY) < 30 && kotlin.math.abs(hipY - ankleY) < 30
+        val handsOnGround = kotlin.math.abs(wristY - shoulderY) < 50
+        val inPlankPosition = bodyAlignment && handsOnGround
 
-        // Detect Plank: hips nearly aligned between shoulders and ankles (flat body)
-        val inPlankPosition = Math.abs(hipToShoulder) < 50 && Math.abs(hipToAnkle) < 50
+        val hipsElevated = hipY < shoulderY - 50 && hipY < ankleY - 30
+        val inDownwardDog = hipsElevated && handsOnGround
 
-        // Detect Downward Dog: hips much higher than shoulders and ankles
-        val inDownwardDog = hipY < shoulderY - 50 && hipY < ankleY - 50
-
-        // Debug Logging
-        Log.d("PlankDogDetector", "hipY: $hipY, shoulderY: $shoulderY, ankleY: $ankleY")
-        Log.d("PlankDogDetector", "inPlank: $inPlankPosition, inDownwardDog: $inDownwardDog")
-
-        // Transition detection
-        if (inPlankPosition) {
+        if (inPlankPosition && !isInPlank) {
             isInPlank = true
         } else if (isInPlank && inDownwardDog) {
             plankDogCount++
             isInPlank = false
-            Log.d("PlankDogDetector", "Plank to Downward Dog Counted! Total: $plankDogCount")
         }
     }
 
-    // Helper: Calculate angle between three points
     fun calculateAngle(first: PoseLandmark, mid: PoseLandmark, last: PoseLandmark): Double {
         val a = distance(mid, last)
         val b = distance(first, mid)
         val c = distance(first, last)
-
-        return Math.acos((b * b + a * a - c * c) / (2 * b * a)) * (180 / Math.PI)
+        return kotlin.math.acos((b * b + a * a - c * c) / (2 * b * a)) * (180 / kotlin.math.PI)
     }
+
     fun distance(p1: PoseLandmark, p2: PoseLandmark): Double {
         val dx = p1.position.x - p2.position.x
         val dy = p1.position.y - p2.position.y
-        return Math.sqrt((dx * dx + dy * dy).toDouble())
+        return kotlin.math.sqrt((dx * dx + dy * dy).toDouble())
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        voiceCoach.shutdown()
+    }
 }
