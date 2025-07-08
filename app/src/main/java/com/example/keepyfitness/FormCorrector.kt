@@ -74,7 +74,7 @@ class FormCorrector {
                     feedbacks.add(FormFeedback(
                         exerciseId = 1,
                         feedbackType = FeedbackType.POSTURE_CORRECTION,
-                        message = "Cùi chỏ quá xa người, hãy giữ cùi chỏ gần sườn",
+                        message = "Elbows too wide, keep elbows close to your body",
                         severity = FeedbackSeverity.WARNING
                     ))
                 }
@@ -88,7 +88,7 @@ class FormCorrector {
                     feedbacks.add(FormFeedback(
                         exerciseId = 1,
                         feedbackType = FeedbackType.POSTURE_CORRECTION,
-                        message = "Giữ thẳng lưng, không được võng hay cong lưng",
+                        message = "Keep your back straight, don't arch or bend",
                         severity = FeedbackSeverity.CRITICAL
                     ))
                 }
@@ -100,7 +100,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 1,
                     feedbackType = FeedbackType.ALIGNMENT,
-                    message = "Hai tay không thẳng hàng, đặt tay đều nhau",
+                    message = "Hands not aligned, place hands evenly",
                     severity = FeedbackSeverity.WARNING
                 ))
             }
@@ -110,7 +110,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 1,
                     feedbackType = FeedbackType.POSTURE_CORRECTION,
-                    message = "Tuyệt vời! Góc cùi chỏ chuẩn",
+                    message = "Perfect! Great elbow angle",
                     severity = FeedbackSeverity.INFO
                 ))
             }
@@ -143,7 +143,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 2,
                     feedbackType = FeedbackType.SAFETY_WARNING,
-                    message = "Đầu gối vượt quá ngón chân, hãy đẩy hông ra sau",
+                    message = "Knees past toes, push your hips back",
                     severity = FeedbackSeverity.CRITICAL
                 ))
             }
@@ -156,7 +156,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 2,
                     feedbackType = FeedbackType.RANGE_OF_MOTION,
-                    message = "Squat chưa đủ sâu, hãy ngồi xuống thấp hơn",
+                    message = "Squat not deep enough, go lower",
                     severity = FeedbackSeverity.WARNING
                 ))
             }
@@ -169,7 +169,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 2,
                     feedbackType = FeedbackType.ALIGNMENT,
-                    message = "Chân quá rộng, hãy thu hẹp khoảng cách chân",
+                    message = "Feet too wide, bring them closer together",
                     severity = FeedbackSeverity.WARNING
                 ))
             }
@@ -179,7 +179,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 2,
                     feedbackType = FeedbackType.POSTURE_CORRECTION,
-                    message = "Tuyệt vời! Góc squat chuẩn",
+                    message = "Perfect! Great squat angle",
                     severity = FeedbackSeverity.INFO
                 ))
             }
@@ -210,7 +210,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 3,
                     feedbackType = FeedbackType.RANGE_OF_MOTION,
-                    message = "Giơ tay lên cao hơn, vượt qua đầu",
+                    message = "Raise your arms higher, above your head",
                     severity = FeedbackSeverity.WARNING
                 ))
             }
@@ -221,7 +221,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 3,
                     feedbackType = FeedbackType.TIMING,
-                    message = "Hai tay không đồng bộ, hãy giơ cùng lúc",
+                    message = "Arms not synchronized, raise them together",
                     severity = FeedbackSeverity.WARNING
                 ))
             }
@@ -234,7 +234,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 3,
                     feedbackType = FeedbackType.RANGE_OF_MOTION,
-                    message = "Tách chân rộng hơn, ra ngoài vai",
+                    message = "Spread your legs wider, beyond shoulder width",
                     severity = FeedbackSeverity.WARNING
                 ))
             }
@@ -244,7 +244,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 3,
                     feedbackType = FeedbackType.POSTURE_CORRECTION,
-                    message = "Tuyệt vời! Động tác chuẩn",
+                    message = "Excellent! Perfect form",
                     severity = FeedbackSeverity.INFO
                 ))
             }
@@ -280,14 +280,14 @@ class FormCorrector {
                     feedbacks.add(FormFeedback(
                         exerciseId = 4,
                         feedbackType = FeedbackType.POSTURE_CORRECTION,
-                        message = "Hông quá thấp, hãy nâng hông lên",
+                        message = "Hips too low, lift your hips up",
                         severity = FeedbackSeverity.CRITICAL
                     ))
                 } else {
                     feedbacks.add(FormFeedback(
                         exerciseId = 4,
                         feedbackType = FeedbackType.POSTURE_CORRECTION,
-                        message = "Hông quá cao, hãy hạ hông xuống",
+                        message = "Hips too high, lower your hips down",
                         severity = FeedbackSeverity.CRITICAL
                     ))
                 }
@@ -298,7 +298,7 @@ class FormCorrector {
                 feedbacks.add(FormFeedback(
                     exerciseId = 4,
                     feedbackType = FeedbackType.POSTURE_CORRECTION,
-                    message = "Tuyệt vời! Giữ thẳng người",
+                    message = "Excellent! Keep your body straight",
                     severity = FeedbackSeverity.INFO
                 ))
             }

@@ -10,6 +10,7 @@ import android.widget.BaseAdapter
 import android.widget.ImageView
 import android.widget.ListView
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.example.keepyfitness.Model.PersonalRecord
 import com.example.keepyfitness.Model.WorkoutHistory
@@ -19,6 +20,7 @@ import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.github.mikephil.charting.utils.ColorTemplate
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.tabs.TabLayout
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -33,6 +35,7 @@ class WorkoutHistoryActivity : AppCompatActivity() {
     private lateinit var recordsListView: ListView
     private lateinit var weeklyChart: BarChart
     private lateinit var pieChart: PieChart
+    private lateinit var btnClearHistory: MaterialButton
 
     private val gson = Gson()
 
@@ -42,6 +45,7 @@ class WorkoutHistoryActivity : AppCompatActivity() {
 
         initViews()
         setupTabs()
+        setupClearHistoryButton()
         loadHistoryData()
     }
 
@@ -52,6 +56,7 @@ class WorkoutHistoryActivity : AppCompatActivity() {
         recordsListView = findViewById(R.id.recordsListView)
         weeklyChart = findViewById(R.id.weeklyChart)
         pieChart = findViewById(R.id.pieChart)
+        btnClearHistory = findViewById(R.id.btnClearHistory)
     }
 
     private fun setupTabs() {
@@ -66,6 +71,45 @@ class WorkoutHistoryActivity : AppCompatActivity() {
             override fun onTabUnselected(tab: TabLayout.Tab) {}
             override fun onTabReselected(tab: TabLayout.Tab) {}
         })
+    }
+
+    private fun setupClearHistoryButton() {
+        btnClearHistory.setOnClickListener {
+            showClearHistoryConfirmationDialog()
+        }
+    }
+
+    private fun showClearHistoryConfirmationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Clear Workout History")
+            .setMessage("Are you sure you want to delete all workout history? This action cannot be undone.")
+            .setIcon(android.R.drawable.ic_dialog_alert)
+            .setPositiveButton("Delete All") { _, _ ->
+                clearAllHistory()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun clearAllHistory() {
+        // Xóa dữ liệu từ SharedPreferences
+        val prefs = getSharedPreferences("workout_history", MODE_PRIVATE)
+        val editor = prefs.edit()
+        editor.remove("history_list")
+        editor.apply()
+
+        // Refresh lại giao diện
+        loadHistoryData()
+        setupCharts()
+        loadPersonalRecords()
+
+        // Hiển thị thông báo thành công
+        AlertDialog.Builder(this)
+            .setTitle("History Cleared")
+            .setMessage("All workout history has been successfully deleted.")
+            .setIcon(android.R.drawable.ic_dialog_info)
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun showHistoryView() {
