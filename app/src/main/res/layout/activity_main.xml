@@ -107,6 +107,7 @@
                 android:layout_marginTop="4dp"
                 android:alpha="0.8" />
 
+
         </LinearLayout>
 
     </FrameLayout>
@@ -143,6 +144,9 @@
         app:cardCornerRadius="30dp"
         app:cardBackgroundColor="#F44336"
         app:cardElevation="8dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -152,10 +156,7 @@
             android:layout_height="match_parent"
             android:orientation="horizontal"
             android:gravity="center"
-            android:padding="16dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackground">
+            android:padding="16dp">
 
             <ImageView
                 android:layout_width="24dp"

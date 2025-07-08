@@ -23,41 +23,33 @@ class PoseOverlay(context:Context?, attr: AttributeSet?): View(context, attr) {
 
     private var pose: Pose? = null
 
-    // TĂNG HIỆU SUẤT DRAWING - giảm lag vẽ pose overlay
+    // Paint cho các điểm pose
     var paint = Paint().apply {
         color = Color.RED
-        strokeWidth = 4f // Giảm từ 6f xuống 4f
+        strokeWidth = 6f
         style = Paint.Style.FILL
-        isAntiAlias = false // Tắt anti-alias để tăng performance
+        isAntiAlias = true
     }
 
+    // Paint cho bên trái (màu xanh dương)
     var paintLeft = Paint().apply {
         color = Color.BLUE
         style = Paint.Style.STROKE
-        strokeWidth = 2f // Giảm từ 3f xuống 2f
-        isAntiAlias = false
+        strokeWidth = 4f
+        isAntiAlias = true
     }
 
+    // Paint cho bên phải (màu vàng)
     var paintRight = Paint().apply {
         color = Color.YELLOW
         style = Paint.Style.STROKE
-        strokeWidth = 2f // Giảm từ 3f xuống 2f
-        isAntiAlias = false
+        strokeWidth = 4f
+        isAntiAlias = true
     }
-
-    // AGGRESSIVE THROTTLING để giảm lag
-    private var lastDrawTime = 0L
-    private val drawInterval = 150L // Tăng từ 100ms lên 150ms (~6.7 FPS)
 
     fun setPose(pose: Pose) {
         this.pose = pose
-
-        // THROTTLE invalidate để tránh overload UI thread
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastDrawTime > drawInterval) {
-            invalidate()
-            lastDrawTime = currentTime
-        }
+        invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -74,43 +66,61 @@ class PoseOverlay(context:Context?, attr: AttributeSet?): View(context, attr) {
         scaleX = videoWidth/imageHeight.toFloat()
         scaleY = videoHeight/imageWidth.toFloat()
 
-        // CHỈ VẼ CÁC ĐIỂM CORE QUAN TRỌNG NHẤT để giảm lag
+        // VẼ TẤT CẢ CÁC ĐIỂM POSE QUAN TRỌNG để có độ chính xác cao nhất
         pose?.let { currentPose ->
-            // Chỉ vẽ 8 điểm core thay vì 12 điểm
-            val corePoints = listOf(
+            // Vẽ tất cả các điểm pose landmarks quan trọng
+            val allKeyPoints = listOf(
+                PoseLandmark.NOSE,
+                PoseLandmark.LEFT_EYE, PoseLandmark.RIGHT_EYE,
+                PoseLandmark.LEFT_EAR, PoseLandmark.RIGHT_EAR,
                 PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER,
                 PoseLandmark.LEFT_ELBOW, PoseLandmark.RIGHT_ELBOW,
+                PoseLandmark.LEFT_WRIST, PoseLandmark.RIGHT_WRIST,
                 PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP,
-                PoseLandmark.LEFT_KNEE, PoseLandmark.RIGHT_KNEE
-                // Bỏ wrists và ankles để giảm số điểm vẽ
+                PoseLandmark.LEFT_KNEE, PoseLandmark.RIGHT_KNEE,
+                PoseLandmark.LEFT_ANKLE, PoseLandmark.RIGHT_ANKLE
             )
 
-            corePoints.forEach { landmarkType ->
+            allKeyPoints.forEach { landmarkType ->
                 currentPose.getPoseLandmark(landmarkType)?.let { landmark ->
                     canvas.drawCircle(
                         landmark.position.x * scaleX,
                         landmark.position.y * scaleY,
-                        4f, // Giảm radius từ point thành circle nhỏ
+                        8f, // Kích thước điểm vừa phải để dễ nhìn
                         paint
                     )
                 }
             }
         }
 
-        // VẼ SKELETON TỐI THIỂU - chỉ những lines quan trọng nhất
-        // CORE BODY LINES - quan trọng cho torso detection
-        drawPoseLines(canvas,PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER, paintLeft)
-        drawPoseLines(canvas,PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP, paintLeft)
-        drawPoseLines(canvas,PoseLandmark.LEFT_HIP, PoseLandmark.LEFT_SHOULDER, paintLeft)
-        drawPoseLines(canvas,PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_SHOULDER, paintRight)
+        // VẼ SKELETON ĐẦY ĐỦ - tất cả các đường nối quan trọng
 
-        // CHỈ VẼ ARMS quan trọng cho push-ups - bỏ wrists
-        drawPoseLines(canvas,PoseLandmark.LEFT_ELBOW, PoseLandmark.LEFT_SHOULDER, paintLeft)
-        drawPoseLines(canvas,PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_SHOULDER, paintRight)
+        // FACE CONNECTIONS
+        drawPoseLines(canvas, PoseLandmark.LEFT_EYE, PoseLandmark.RIGHT_EYE, paint)
+        drawPoseLines(canvas, PoseLandmark.LEFT_EAR, PoseLandmark.LEFT_EYE, paintLeft)
+        drawPoseLines(canvas, PoseLandmark.RIGHT_EAR, PoseLandmark.RIGHT_EYE, paintRight)
 
-        // CHỈ VẼ LEGS quan trọng cho squats - bỏ ankles
-        drawPoseLines(canvas,PoseLandmark.LEFT_HIP, PoseLandmark.LEFT_KNEE, paintLeft)
-        drawPoseLines(canvas,PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE, paintRight)
+        // TORSO CONNECTIONS
+        drawPoseLines(canvas, PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER, paint)
+        drawPoseLines(canvas, PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_HIP, paintLeft)
+        drawPoseLines(canvas, PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_HIP, paintRight)
+        drawPoseLines(canvas, PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP, paint)
+
+        // LEFT ARM CONNECTIONS
+        drawPoseLines(canvas, PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_ELBOW, paintLeft)
+        drawPoseLines(canvas, PoseLandmark.LEFT_ELBOW, PoseLandmark.LEFT_WRIST, paintLeft)
+
+        // RIGHT ARM CONNECTIONS
+        drawPoseLines(canvas, PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW, paintRight)
+        drawPoseLines(canvas, PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST, paintRight)
+
+        // LEFT LEG CONNECTIONS
+        drawPoseLines(canvas, PoseLandmark.LEFT_HIP, PoseLandmark.LEFT_KNEE, paintLeft)
+        drawPoseLines(canvas, PoseLandmark.LEFT_KNEE, PoseLandmark.LEFT_ANKLE, paintLeft)
+
+        // RIGHT LEG CONNECTIONS
+        drawPoseLines(canvas, PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE, paintRight)
+        drawPoseLines(canvas, PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE, paintRight)
     }
 
     fun drawPoseLines(canvas: Canvas, startPoint: Int, endPoint: Int, paint: Paint) {

@@ -18,10 +18,16 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.bumptech.glide.Glide
 import com.example.keepyfitness.Model.ExerciseDataModel
+import com.example.keepyfitness.Model.Schedule
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import java.text.SimpleDateFormat
+import java.util.*
 
 class ExerciseListActivity : AppCompatActivity() {
 
-    private  lateinit var exerciseListView:ListView
+    private lateinit var exerciseListView: ListView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -34,24 +40,24 @@ class ExerciseListActivity : AppCompatActivity() {
 
         exerciseListView = findViewById(R.id.exerciseList)
 
-        var list = listOf(
-            ExerciseDataModel("Push Ups",R.drawable.pushup,1, Color.parseColor("#0041a8")),
-            ExerciseDataModel("Squats",R.drawable.squat,2, Color.parseColor("#f20226")),
-            ExerciseDataModel("Jumping Jacks",R.drawable.jumping,3, Color.parseColor("#f7680f")),
-            ExerciseDataModel("Plank To Downward Dog",R.drawable.plank,4, Color.parseColor("#008a40")),
+        val list = listOf(
+            ExerciseDataModel("Push Ups", R.drawable.pushup, 1, Color.parseColor("#0041a8")),
+            ExerciseDataModel("Squats", R.drawable.squat, 2, Color.parseColor("#f20226")),
+            ExerciseDataModel("Jumping Jacks", R.drawable.jumping, 3, Color.parseColor("#f7680f")),
+            ExerciseDataModel("Plank To Downward Dog", R.drawable.plank, 4, Color.parseColor("#008a40")),
         )
 
-        var adapter = ExerciseAdapter(this,list)
+        val adapter = ExerciseAdapter(this, list)
         exerciseListView.adapter = adapter
     }
 
-    class ExerciseAdapter(val context:Context,val excerciseList:List<ExerciseDataModel>):BaseAdapter(){
+    class ExerciseAdapter(val context: Context, val exerciseList: List<ExerciseDataModel>) : BaseAdapter() {
         override fun getCount(): Int {
-            return excerciseList.size;
+            return exerciseList.size
         }
 
         override fun getItem(position: Int): Any {
-            return excerciseList[position]
+            return exerciseList[position]
         }
 
         override fun getItemId(position: Int): Long {
@@ -59,23 +65,49 @@ class ExerciseListActivity : AppCompatActivity() {
         }
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
-            var view = LayoutInflater.from(context).inflate(R.layout.exercise_item,parent,false)
-            var titleTV = view.findViewById<TextView>(R.id.textView2)
-            var exerciseImg = view.findViewById<ImageView>(R.id.imageView)
-            var card = view.findViewById<CardView>(R.id.cardView)
+            val view = LayoutInflater.from(context).inflate(R.layout.exercise_item, parent, false)
+            val titleTV = view.findViewById<TextView>(R.id.textView2)
+            val exerciseImg = view.findViewById<ImageView>(R.id.imageView)
+            val card = view.findViewById<CardView>(R.id.cardView)
 
             card.setOnClickListener {
-                var intent = Intent(context,MainActivity::class.java)
-                intent.putExtra("data",excerciseList[position])
+                // Lấy target từ schedule của ngày hôm nay
+                val targetReps = getTodayTargetForExercise(exerciseList[position].title)
+
+                val intent = Intent(context, MainActivity::class.java)
+                intent.putExtra("data", exerciseList[position])
+                intent.putExtra("target_count", targetReps)
                 context.startActivity(intent)
             }
 
-            card.setCardBackgroundColor(excerciseList[position].color)
-            Glide.with(context).asGif().load(excerciseList[position].image).into(exerciseImg)
-            titleTV.setText(excerciseList[position].title)
-            return view;
+            card.setCardBackgroundColor(exerciseList[position].color)
+            Glide.with(context).asGif().load(exerciseList[position].image).into(exerciseImg)
+            titleTV.text = exerciseList[position].title
+            return view
         }
 
-    }
+        private fun getTodayTargetForExercise(exerciseName: String): Int {
+            val prefs = context.getSharedPreferences("schedules", Context.MODE_PRIVATE)
+            val gson = Gson()
+            val type = object : TypeToken<List<Schedule>>() {}.type
+            val listJson = prefs.getString("schedule_list", null)
+            val scheduleList: List<Schedule> = if (listJson != null) {
+                gson.fromJson(listJson, type)
+            } else {
+                emptyList()
+            }
 
+            // Lấy tên ngày hôm nay
+            val calendar = Calendar.getInstance()
+            val dayFormat = SimpleDateFormat("EEEE", Locale.ENGLISH) // Monday, Tuesday, etc.
+            val today = dayFormat.format(calendar.time)
+
+            // Tìm schedule cho bài tập này trong ngày hôm nay
+            val todaySchedule = scheduleList.find { schedule ->
+                schedule.exercise == exerciseName && schedule.days.contains(today)
+            }
+
+            return todaySchedule?.quantity ?: 0 // Trả về 0 nếu không có target
+        }
+    }
 }

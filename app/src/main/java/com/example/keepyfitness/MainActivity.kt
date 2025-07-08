@@ -172,12 +172,14 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
                 workoutTimer?.postDelayed(this, 1000)
             }
         }
-        startTimer()
+        // CHỈ START TIMER 1 LẦN - không gọi startTimer() ở đây
     }
 
     private fun startTimer() {
-        workoutTimer?.post(timerRunnable!!)
-        timerStarted = true
+        if (!timerStarted) { // CHỈ START KHI CHƯA START
+            workoutTimer?.post(timerRunnable!!)
+            timerStarted = true
+        }
     }
 
     private fun stopTimer() {
@@ -193,11 +195,17 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
 
     private fun setupStopWorkoutButton() {
         stopWorkoutCard.setOnClickListener {
+            Log.d("MainActivity", "Stop workout button clicked")
             stopWorkout()
         }
+
+        // Đảm bảo button có thể click được
+        stopWorkoutCard.isClickable = true
+        stopWorkoutCard.isFocusable = true
     }
 
     private fun stopWorkout() {
+        Log.d("MainActivity", "Stopping workout...")
         stopTimer()
 
         // Get current count based on exercise type
@@ -209,15 +217,25 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
             else -> 0
         }
 
-        // Navigate to results screen
-        val intent = Intent(this, WorkoutResultsActivity::class.java)
-        intent.putExtra("exercise_data", exerciseDataModel)
-        intent.putExtra("completed_count", currentCount)
-        intent.putExtra("target_count", targetCount)
-        intent.putExtra("workout_duration", elapsedSeconds)
+        Log.d("MainActivity", "Current count: $currentCount, Target: $targetCount, Duration: $elapsedSeconds")
 
-        startActivity(intent)
-        finish()
+        try {
+            // Navigate to results screen
+            val intent = Intent(this, WorkoutResultsActivity::class.java)
+            intent.putExtra("exercise_data", exerciseDataModel)
+            intent.putExtra("completed_count", currentCount)
+            intent.putExtra("target_count", targetCount)
+            intent.putExtra("workout_duration", elapsedSeconds)
+
+            startActivity(intent)
+            finish()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error navigating to results: ${e.message}")
+            // Fallback: just go back to home screen
+            val intent = Intent(this, HomeScreen::class.java)
+            startActivity(intent)
+            finish()
+        }
     }
 
     private fun setupFormFeedbackOverlay() {
@@ -406,6 +424,11 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         poseDetector.process(inputImage)
             .addOnSuccessListener { results ->
                 poseOverlay.setPose(results)
+
+                // START TIMER KHI DETECT POSE ĐẦU TIÊN
+                if (!timerStarted) {
+                    startTimer()
+                }
 
                 // Announce workout start (once)
                 if (!workoutAnnounced) {

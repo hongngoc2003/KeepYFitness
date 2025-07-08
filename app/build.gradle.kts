@@ -17,7 +17,8 @@ android {
         versionName = "1.0"
 
         ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+            // Thêm x86_64 và x86 để hỗ trợ emulator
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64", "x86")
         }
     }
 
@@ -46,7 +47,7 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
 }
 

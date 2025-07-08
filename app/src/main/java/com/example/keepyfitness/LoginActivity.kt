@@ -33,14 +33,23 @@ class LoginActivity : ComponentActivity() {
                 return@setOnClickListener
             }
 
+            // Disable button during authentication
+            loginButton.isEnabled = false
+
             // Authenticate user
             auth.signInWithEmailAndPassword(email, password)
                 .addOnCompleteListener { task ->
+                    loginButton.isEnabled = true // Re-enable button
+
                     if (task.isSuccessful) {
                         val user = auth.currentUser
                         if (user != null && user.isEmailVerified) {
                             Toast.makeText(this, "Login successful", Toast.LENGTH_SHORT).show()
-                            startActivity(Intent(this, HomeScreen::class.java))
+
+                            // Clear intent flags to avoid navigation issues
+                            val intent = Intent(this, HomeScreen::class.java)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            startActivity(intent)
                             finish()
                         } else {
                             Toast.makeText(this, "Please verify your email before logging in.", Toast.LENGTH_LONG).show()
