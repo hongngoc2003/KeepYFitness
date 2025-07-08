@@ -8,19 +8,25 @@ import android.os.Bundle
 import android.util.Size
 import android.media.ImageReader
 import android.content.Context
+import android.content.Intent
 import android.media.ImageReader.OnImageAvailableListener
 import android.view.Surface
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.fragment.app.Fragment
 import android.graphics.Bitmap
 import android.media.Image
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
 import androidx.cardview.widget.CardView
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.graphics.toColorInt
 import com.bumptech.glide.Glide
 import com.example.keepyfitness.Model.ExerciseDataModel
 import com.google.mlkit.vision.common.InputImage
@@ -28,6 +34,7 @@ import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
+import java.util.Locale
 
 class MainActivity : AppCompatActivity(), OnImageAvailableListener {
 
@@ -43,29 +50,64 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
     private var workoutStartTime: Long = 0
     private var targetCount: Int = 0
 
-    // Form Correction variables
+    // Form Correction variables - GIẢM SỬ DỤNG để tăng performance
     private lateinit var formCorrector: FormCorrector
-    private var feedbackContainer: android.widget.LinearLayout? = null
-    private var feedbackCard: androidx.cardview.widget.CardView? = null
-    private var feedbackIcon: android.widget.ImageView? = null
-    private var feedbackTitle: android.widget.TextView? = null
-    private var feedbackMessage: android.widget.TextView? = null
-    private var formQualityProgress: android.widget.ProgressBar? = null
-    private var formQualityText: android.widget.TextView? = null
+    private var feedbackContainer: LinearLayout? = null
+    private var feedbackCard: CardView? = null
+    private var feedbackIcon: ImageView? = null
+    private var feedbackTitle: TextView? = null
+    private var feedbackMessage: TextView? = null
+    private var formQualityProgress: ProgressBar? = null
+    private var formQualityText: TextView? = null
     private var lastFeedbackTime = 0L
-    private val feedbackCooldown = 3000L
+    private val feedbackCooldown = 5000L // Tăng từ 3s lên 5s
 
     // Voice Coach
     private lateinit var voiceCoach: VoiceCoach
     private var lastMotivationTime = 0L
-    private val motivationInterval = 30000L
+    private val motivationInterval = 45000L // Tăng từ 30s lên 45s để giảm frequency
     private var workoutAnnounced = false
+
+    // Timer variables
+    private lateinit var timerText: TextView
+    private lateinit var stopWorkoutCard: CardView
+    private var workoutTimer: Handler? = null
+    private var timerRunnable: Runnable? = null
+    private var elapsedSeconds: Long = 0
+    private var timerStarted = false // THÊM FLAG để kiểm soát timer
 
     // Camera variables
     var previewHeight = 0
     var previewWidth = 0
     var sensorOrientation = 0
 
+    // Camera frame processing - TĂNG HIỆU SUẤT MẠNH HƠN
+    private var isProcessingFrame = false
+    private val yuvBytes = arrayOfNulls<ByteArray>(3)
+    private var rgbBytes: IntArray? = null
+    private var yRowStride = 0
+    private var postInferenceCallback: Runnable? = null
+    private var imageConverter: Runnable? = null
+    private var rgbFrameBitmap: Bitmap? = null
+
+    // AGGRESSIVE THROTTLING để giảm lag mạnh
+    private var lastProcessTime = 0L
+    private val processInterval = 300L // Tăng từ 200ms lên 300ms (~3.3 FPS)
+    private var frameSkipCounter = 0
+    private val frameSkipInterval = 5 // Tăng từ 3 lên 5 - chỉ xử lý 1/5 frames
+
+    // Exercise detection variables
+    var pushUpCount = 0
+    var isLowered = false
+    var squatCount = 0
+    var isSquatting = false
+    var jumpingJackCount = 0
+    var isHandsUpAndLegsApart = false
+    var isInStartPosition = false
+    var plankDogCount = 0
+    var isInPlank = false
+
+    @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -76,7 +118,16 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
             insets
         }
 
-        exerciseDataModel = intent.getSerializableExtra("data") as ExerciseDataModel
+        // Safe casting for serializable data
+        exerciseDataModel = try {
+            intent.getSerializableExtra("data") as? ExerciseDataModel
+                ?: throw IllegalArgumentException("Exercise data is required")
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error getting exercise data: ${e.message}")
+            finish()
+            return
+        }
+
         targetCount = intent.getIntExtra("target_count", 50)
         workoutStartTime = System.currentTimeMillis()
 
@@ -85,34 +136,93 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         voiceCoach = VoiceCoach(this)
 
         poseOverlay = findViewById(R.id.po)
-        countTV = findViewById<TextView>(R.id.textView)
-        var countCard = findViewById<CardView>(R.id.countCard)
+        countTV = findViewById(R.id.textView)
+        timerText = findViewById(R.id.timerText)
+        stopWorkoutCard = findViewById(R.id.stopWorkoutCard)
+        val countCard = findViewById<android.widget.FrameLayout>(R.id.countCard) // Sửa từ CardView thành FrameLayout
 
         setupFormFeedbackOverlay()
-        countCard.setBackgroundColor(exerciseDataModel.color)
+        setupTimer()
+        setupStopWorkoutButton()
 
-        var topCard = findViewById<CardView>(R.id.card2)
+        // Set background cho FrameLayout thay vì CardView
+        countCard.background = resources.getDrawable(R.drawable.circle_background, null)
+
+        val topCard = findViewById<CardView>(R.id.card2)
         topCard.setBackgroundColor(exerciseDataModel.color)
 
-        var topImg = findViewById<ImageView>(R.id.imageView2)
+        val topImg = findViewById<ImageView>(R.id.imageView2)
         Glide.with(applicationContext).asGif().load(exerciseDataModel.image).into(topImg)
 
         // Request camera permission
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED) {
-                val permission = arrayOf(android.Manifest.permission.CAMERA)
-                requestPermissions(permission, 1122)
-            } else {
-                setFragment()
-            }
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_DENIED) {
+            val permission = arrayOf(android.Manifest.permission.CAMERA)
+            requestPermissions(permission, 1122)
         } else {
             setFragment()
         }
     }
 
+    private fun setupTimer() {
+        workoutTimer = Handler(Looper.getMainLooper())
+        timerRunnable = object : Runnable {
+            override fun run() {
+                elapsedSeconds++
+                updateTimerDisplay()
+                workoutTimer?.postDelayed(this, 1000)
+            }
+        }
+        startTimer()
+    }
+
+    private fun startTimer() {
+        workoutTimer?.post(timerRunnable!!)
+        timerStarted = true
+    }
+
+    private fun stopTimer() {
+        workoutTimer?.removeCallbacks(timerRunnable!!)
+        timerStarted = false
+    }
+
+    private fun updateTimerDisplay() {
+        val minutes = elapsedSeconds / 60
+        val seconds = elapsedSeconds % 60
+        timerText.text = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+    }
+
+    private fun setupStopWorkoutButton() {
+        stopWorkoutCard.setOnClickListener {
+            stopWorkout()
+        }
+    }
+
+    private fun stopWorkout() {
+        stopTimer()
+
+        // Get current count based on exercise type
+        val currentCount = when(exerciseDataModel.id) {
+            1 -> pushUpCount
+            2 -> squatCount
+            3 -> jumpingJackCount
+            4 -> plankDogCount
+            else -> 0
+        }
+
+        // Navigate to results screen
+        val intent = Intent(this, WorkoutResultsActivity::class.java)
+        intent.putExtra("exercise_data", exerciseDataModel)
+        intent.putExtra("completed_count", currentCount)
+        intent.putExtra("target_count", targetCount)
+        intent.putExtra("workout_duration", elapsedSeconds)
+
+        startActivity(intent)
+        finish()
+    }
+
     private fun setupFormFeedbackOverlay() {
         val inflater = layoutInflater
-        val feedbackOverlay = inflater.inflate(R.layout.form_feedback_overlay, null)
+        val feedbackOverlay = inflater.inflate(R.layout.form_feedback_overlay, findViewById(R.id.main), false)
 
         feedbackContainer = feedbackOverlay.findViewById(R.id.feedbackContainer)
         feedbackCard = feedbackOverlay.findViewById(R.id.feedbackCard)
@@ -122,20 +232,20 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         formQualityProgress = feedbackOverlay.findViewById(R.id.formQualityProgress)
         formQualityText = feedbackOverlay.findViewById(R.id.formQualityText)
 
-        val mainLayout = findViewById<androidx.constraintlayout.widget.ConstraintLayout>(R.id.main)
-        val layoutParams = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams(
-            androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.MATCH_PARENT,
-            androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.WRAP_CONTENT
+        val mainLayout = findViewById<ConstraintLayout>(R.id.main)
+        val layoutParams = ConstraintLayout.LayoutParams(
+            ConstraintLayout.LayoutParams.MATCH_PARENT,
+            ConstraintLayout.LayoutParams.WRAP_CONTENT
         )
         layoutParams.topToBottom = R.id.card2
-        layoutParams.startToStart = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
-        layoutParams.endToEnd = androidx.constraintlayout.widget.ConstraintLayout.LayoutParams.PARENT_ID
+        layoutParams.startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+        layoutParams.endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
         layoutParams.setMargins(0, 16, 0, 0)
 
         feedbackOverlay.layoutParams = layoutParams
         mainLayout.addView(feedbackOverlay)
 
-        feedbackOverlay.findViewById<android.widget.ImageView>(R.id.dismissFeedback).setOnClickListener {
+        feedbackOverlay.findViewById<ImageView>(R.id.dismissFeedback).setOnClickListener {
             hideFeedback()
         }
     }
@@ -146,8 +256,8 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
 
         feedbackContainer?.visibility = android.view.View.VISIBLE
         feedbackCard?.setCardBackgroundColor(
-            if (isPositive) android.graphics.Color.parseColor("#4CAF50")
-            else android.graphics.Color.parseColor("#F44336")
+            if (isPositive) "#4CAF50".toColorInt()
+            else "#F44336".toColorInt()
         )
         feedbackIcon?.setImageResource(
             if (isPositive) android.R.drawable.ic_dialog_info
@@ -157,16 +267,16 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         feedbackMessage?.text = feedback
 
         formQualityProgress?.progress = formQuality
-        formQualityText?.text = "$formQuality%"
+        formQualityText?.text = getString(R.string.form_quality_format, formQuality)
 
         val progressColor = when {
-            formQuality >= 80 -> android.graphics.Color.parseColor("#4CAF50")
-            formQuality >= 60 -> android.graphics.Color.parseColor("#FF9800")
-            else -> android.graphics.Color.parseColor("#F44336")
+            formQuality >= 80 -> "#4CAF50".toColorInt()
+            formQuality >= 60 -> "#FF9800".toColorInt()
+            else -> "#F44336".toColorInt()
         }
         formQualityProgress?.progressTintList = android.content.res.ColorStateList.valueOf(progressColor)
 
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+        Handler(Looper.getMainLooper()).postDelayed({
             hideFeedback()
         }, 4000)
     }
@@ -185,11 +295,11 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         }
         val camera2Fragment = CameraConnectionFragment.newInstance(
             object : CameraConnectionFragment.ConnectionCallback {
-                override fun onPreviewSizeChosen(size: Size?, rotation: Int) {
+                override fun onPreviewSizeChosen(size: Size?, cameraRotation: Int) {
                     previewHeight = size!!.height
                     previewWidth = size.width
                     poseOverlay.imageHeight = previewHeight
-                    sensorOrientation = rotation - getScreenOrientation()
+                    sensorOrientation = cameraRotation - getScreenOrientation()
                     poseOverlay.sensorOrientation = sensorOrientation
                 }
 
@@ -206,6 +316,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         supportFragmentManager.beginTransaction().replace(R.id.container, camera2Fragment).commit()
     }
 
+    @Suppress("DEPRECATION")
     protected fun getScreenOrientation(): Int {
         return when (windowManager.defaultDisplay.rotation) {
             Surface.ROTATION_270 -> 270
@@ -227,21 +338,6 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
             finish()
         }
     }
-
-    // Camera frame processing - TĂNG HIỆU SUẤT
-    private var isProcessingFrame = false
-    private val yuvBytes = arrayOfNulls<ByteArray>(3)
-    private var rgbBytes: IntArray? = null
-    private var yRowStride = 0
-    private var postInferenceCallback: Runnable? = null
-    private var imageConverter: Runnable? = null
-    private var rgbFrameBitmap: Bitmap? = null
-
-    // THROTTLING VARIABLES để giảm lag
-    private var lastProcessTime = 0L
-    private val processInterval = 200L // Giảm từ real-time xuống 5 FPS
-    private var frameSkipCounter = 0
-    private val frameSkipInterval = 3 // Chỉ xử lý 1/3 frames
 
     override fun onImageAvailable(reader: ImageReader) {
         if (previewWidth == 0 || previewHeight == 0) return
@@ -295,6 +391,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
             }
             processImage()
         } catch (e: Exception) {
+            Log.e("MainActivity", "Error processing image: ${e.message}")
             postInferenceCallback?.run()
         }
     }
@@ -338,7 +435,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
 
         runOnUiThread {
             formQualityProgress?.progress = formQuality
-            formQualityText?.text = "$formQuality%"
+            formQualityText?.text = getString(R.string.form_quality_format, formQuality)
         }
 
         // Voice feedback for form corrections - THROTTLED
@@ -350,7 +447,7 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         }
         val positiveFeedback = feedbacks.firstOrNull {
             it.severity == com.example.keepyfitness.Model.FeedbackSeverity.INFO &&
-            (it.message.contains("Perfect") || it.message.contains("Great") || it.message.contains("Tuyệt vời"))
+                    (it.message.contains("Perfect") || it.message.contains("Great") || it.message.contains("Tuyệt vời"))
         }
 
         when {
@@ -435,13 +532,11 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
             if (yuvBytes[i] == null) {
                 yuvBytes[i] = ByteArray(buffer.capacity())
             }
-            buffer[yuvBytes[i]]
+            buffer.get(yuvBytes[i]!!)
         }
     }
 
     // Exercise detection methods
-    var pushUpCount = 0
-    var isLowered = false
     fun detectPushUp(pose: Pose) {
         val leftShoulder = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
         val rightShoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
@@ -475,8 +570,6 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         }
     }
 
-    var squatCount = 0
-    var isSquatting = false
     fun detectSquat(pose: Pose) {
         val leftHip = pose.getPoseLandmark(PoseLandmark.LEFT_HIP)
         val rightHip = pose.getPoseLandmark(PoseLandmark.RIGHT_HIP)
@@ -512,9 +605,6 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         }
     }
 
-    var jumpingJackCount = 0
-    var isHandsUpAndLegsApart = false
-    var isInStartPosition = false
     fun detectJumpingJack(pose: Pose) {
         val leftWrist = pose.getPoseLandmark(PoseLandmark.LEFT_WRIST)
         val rightWrist = pose.getPoseLandmark(PoseLandmark.RIGHT_WRIST)
@@ -553,8 +643,6 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
         }
     }
 
-    var plankDogCount = 0
-    var isInPlank = false
     fun detectPlankToDownwardDog(pose: Pose) {
         val leftShoulder = pose.getPoseLandmark(PoseLandmark.LEFT_SHOULDER)
         val rightShoulder = pose.getPoseLandmark(PoseLandmark.RIGHT_SHOULDER)
@@ -605,6 +693,19 @@ class MainActivity : AppCompatActivity(), OnImageAvailableListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopTimer()
         voiceCoach.shutdown()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopTimer()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (timerRunnable != null) {
+            startTimer()
+        }
     }
 }

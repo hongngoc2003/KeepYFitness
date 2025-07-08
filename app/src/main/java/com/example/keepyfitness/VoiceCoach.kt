@@ -17,9 +17,9 @@ class VoiceCoach(private val context: Context) : TextToSpeech.OnInitListener {
 
     // THROTTLING cho voice feedback để tránh spam
     private var lastSpeechTime = 0L
-    private val speechCooldown = 2000L // 2 giây giữa các voice feedback
+    private val speechCooldown = 3000L // Tăng từ 2 giây lên 3 giây để giảm lag
     private var lastFormFeedbackTime = 0L
-    private val formFeedbackCooldown = 4000L // 4 giây cho form feedback
+    private val formFeedbackCooldown = 5000L // Tăng từ 4 giây lên 5 giây
 
     init {
         initTextToSpeech()
@@ -32,24 +32,30 @@ class VoiceCoach(private val context: Context) : TextToSpeech.OnInitListener {
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             textToSpeech?.let { tts ->
-                val result = tts.setLanguage(Locale.getDefault())
+                // FORCE ENGLISH LANGUAGE - không sử dụng system default
+                val englishResult = tts.setLanguage(Locale.ENGLISH)
 
-                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    Log.e(TAG, "Language not supported")
-                    // Fallback to English
-                    tts.setLanguage(Locale.ENGLISH)
+                if (englishResult == TextToSpeech.LANG_MISSING_DATA ||
+                    englishResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    Log.e(TAG, "English language not supported, trying US English")
+                    val usEnglishResult = tts.setLanguage(Locale.US)
+
+                    if (usEnglishResult == TextToSpeech.LANG_MISSING_DATA ||
+                        usEnglishResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        Log.e(TAG, "English languages not available")
+                        return
+                    }
                 }
 
-                // TĂNG TỐC ĐỘ để giảm delay
-                tts.setSpeechRate(1.1f) // Tăng từ 0.9f lên 1.1f
+                // OPTIMIZE SPEECH SETTINGS
+                tts.setSpeechRate(1.2f) // Tăng tốc độ nói để giảm thời gian
                 tts.setPitch(1.0f)
 
                 isInitialized = true
+                Log.d(TAG, "TextToSpeech initialized with English language")
 
                 // Process queued messages
                 processSpeechQueue()
-
-                Log.d(TAG, "TextToSpeech initialized successfully")
             }
         } else {
             Log.e(TAG, "TextToSpeech initialization failed")
@@ -58,8 +64,10 @@ class VoiceCoach(private val context: Context) : TextToSpeech.OnInitListener {
 
     private fun processSpeechQueue() {
         if (isInitialized && speechQueue.isNotEmpty()) {
-            speechQueue.forEach { message ->
-                speakNow(message)
+            // CHỈ XỬ LÝ message đầu tiên để tránh spam
+            val firstMessage = speechQueue.firstOrNull()
+            if (firstMessage != null) {
+                speakNow(firstMessage)
             }
             speechQueue.clear()
         }
@@ -73,17 +81,18 @@ class VoiceCoach(private val context: Context) : TextToSpeech.OnInitListener {
         }
         lastSpeechTime = currentTime
 
-        textToSpeech?.speak(message, TextToSpeech.QUEUE_FLUSH, null, null) // QUEUE_FLUSH thay vì QUEUE_ADD
+        // FORCE ENGLISH trước mỗi lần nói
+        textToSpeech?.setLanguage(Locale.ENGLISH)
+        textToSpeech?.speak(message, TextToSpeech.QUEUE_FLUSH, null, null)
     }
 
     fun speak(message: String) {
         if (isInitialized) {
             speakNow(message)
         } else {
-            // CHỈ QUEUE những message quan trọng
-            if (speechQueue.size < 3) { // Giới hạn queue size
-                speechQueue.add(message)
-            }
+            // CHỈ QUEUE message cuối cùng để tránh spam
+            speechQueue.clear()
+            speechQueue.add(message)
         }
     }
 
@@ -94,7 +103,7 @@ class VoiceCoach(private val context: Context) : TextToSpeech.OnInitListener {
 
     // Thêm phương thức thông báo bắt đầu workout với target
     fun announceWorkoutStart(exerciseName: String, targetCount: Int) {
-        speak("Starting $exerciseName workout. Target: $targetCount repetitions. Let's go!")
+        speak("Start $exerciseName. Target $targetCount. Go!")
     }
 
     // PHƯƠNG THỨC CHÍNH: Thông báo lỗi động tác - TIẾNG ANH
@@ -106,14 +115,15 @@ class VoiceCoach(private val context: Context) : TextToSpeech.OnInitListener {
     fun giveFormFeedback(feedback: String, isPositive: Boolean) {
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastFormFeedbackTime < formFeedbackCooldown) {
-            return // Skip form feedback nếu quá gần
+            return
         }
         lastFormFeedbackTime = currentTime
 
+        // SHORTER MESSAGES để giảm thời gian nói
         if (isPositive) {
-            speak("Great form! $feedback")
+            speak("Good form")
         } else {
-            speak("Watch your form: $feedback")
+            speak("Fix form")
         }
     }
 
@@ -161,19 +171,14 @@ class VoiceCoach(private val context: Context) : TextToSpeech.OnInitListener {
 
     // Thông báo động viên - TIẾNG ANH
     fun giveMotivation() {
-        val motivationalMessages = listOf(
-            "You're doing great!",
-            "Keep it up!",
-            "Stay strong!",
-            "Perfect form!",
+        val shortMotivations = listOf(
+            "Great job!",
+            "Keep going!",
             "You got this!",
-            "Amazing work!",
-            "Keep pushing!",
-            "Excellent effort!",
-            "Don't give up!",
-            "You're crushing it!"
+            "Nice work!",
+            "Perfect!"
         )
-        speak(motivationalMessages.random())
+        speak(shortMotivations.random())
     }
 
     // Thông báo cảnh báo an toàn - TIẾNG ANH
@@ -192,23 +197,18 @@ class VoiceCoach(private val context: Context) : TextToSpeech.OnInitListener {
         }
     }
 
-    // ĐẾM CHỈ SỐ - KHÔNG KÈM TÊN BÀI TẬP
+    // SIMPLIFIED counting - chỉ nói số
     fun announceCount(count: Int, exerciseName: String) {
-        speak("$count") // Chỉ nói số, không nói tên bài tập
-    }
-
-    // Thêm phương thức đếm đơn giản chỉ số
-    fun announceSimpleCount(count: Int) {
         speak("$count")
     }
 
-    // Thêm phương thức thông báo tiến độ - TIẾNG ANH
+    // OPTIMIZED progress announcements
     fun announceProgress(current: Int, target: Int) {
         val percentage = (current.toFloat() / target * 100).toInt()
         when {
-            current == target -> speak("Target achieved! Excellent work!")
-            current == target / 2 -> speak("Halfway there! Keep pushing!")
-            percentage % 25 == 0 && percentage > 0 -> speak("$percentage percent complete!")
+            current == target -> speak("Complete!")
+            current == target / 2 -> speak("Halfway!")
+            percentage % 25 == 0 && percentage > 0 -> speak("$percentage percent!")
         }
     }
 

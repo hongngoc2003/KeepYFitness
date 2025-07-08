@@ -1,8 +1,8 @@
 plugins {
-    id("com.google.gms.google-services")
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -16,84 +16,42 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        // Tối ưu hóa performance
         ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a") // Chỉ build cho ARM architectures
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
         }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true // Bật minify cho release build
-            isShrinkResources = true // Loại bỏ resources không dùng
+            isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
-        debug {
-            isDebuggable = true
-            // Tắt các tối ưu hóa có thể làm chậm debug build
-        }
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = "11"
-        // Tối ưu hóa Kotlin compilation
-        freeCompilerArgs += listOf(
-            "-Xjvm-default=all",
-            "-opt-in=kotlin.RequiresOptIn"
-        )
+        jvmTarget = "17"
     }
 
     buildFeatures {
+        viewBinding = true
         compose = true
-        // Tắt các features không cần thiết
-        buildConfig = false
-        aidl = false
-        renderScript = false
-        shaders = false
     }
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.1"
     }
-
-    // Tối ưu hóa packaging
-    packaging {
-        resources {
-            excludes += setOf(
-                "META-INF/DEPENDENCIES",
-                "META-INF/LICENSE",
-                "META-INF/LICENSE.txt",
-                "META-INF/NOTICE",
-                "META-INF/NOTICE.txt"
-            )
-        }
-    }
 }
 
 dependencies {
-    implementation("com.google.android.material:material:1.11.0")
-    implementation("com.google.firebase:firebase-analytics")
-    implementation("com.google.firebase:firebase-auth")
-    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
-    implementation("com.github.bumptech.glide:glide:4.16.0")
-    implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
-    // Thêm chart library cho progress tracking
-    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
-    implementation(libs.androidx.activity)
-    implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
@@ -101,7 +59,36 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.material)
+    implementation(libs.androidx.activity)
+    implementation(libs.androidx.constraintlayout)
+
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-auth")
+
+    // ML Kit
+    implementation("com.google.mlkit:pose-detection:18.0.0-beta4")
+    implementation("com.google.mlkit:pose-detection-accurate:18.0.0-beta4")
+
+    // Image loading
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+
+    // JSON
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // Charts
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+
+    // CardView
+    implementation("androidx.cardview:cardview:1.0.0")
+
+    // Material Design
+    implementation("com.google.android.material:material:1.12.0")
+
+    // Test dependencies
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
